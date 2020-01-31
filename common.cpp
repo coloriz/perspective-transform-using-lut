@@ -105,7 +105,7 @@ void LoadStoreMultipleLUT::apply(const uint* image_data)
         "b       .lsmloop\n"
         ".lsmexit:"
         :
-        : [lut] "r" (lut), [image_data] "r" (image_data), [table_size] "r" (table_size)
+        : [lut]"r" (lut), [image_data]"r" (image_data), [table_size]"r" (table_size)
         : "cc", "memory", "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8"
     );
 }

@@ -1,6 +1,7 @@
 #include <chrono>
 #include <cstdio>
 #include <memory>
+#include <regex>
 #include <vector>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
@@ -11,36 +12,30 @@
 using namespace std;
 using namespace cv;
 
-void print_usage(char* app_name)
-{
-    printf(
-        "\n"
-        "Usage:\t %s [method name] [image path]\n"
-        "\n"
-        "Example:\n"
-        "\n"
-        "\t$ %s parallel test.jpg\n"
-        "\n"
-        "Currently available methods:\n"
-        "  plain\t\tplain 1D LUT with for-loop;\n"
-        "  parallel\tmulti-threaded for-loop; each thread applies LUT on their sub-region\n"
-#ifdef __arm__
-        "  plain-o1\tplain 1D LUT with general purpose registers and LDM STM instructions\n"
-        "  parallel-o1\tmulti-threaded optimized for-loop; same optimization scheme as plain-o1\n"
-#endif
-        "\n", app_name, app_name);
-}
+
+
+bool parse_args(int argc, char** argv, 
+                string& lut_method, string& image_path, 
+                Point2f& tl, Point2f& tr, Point2f& br, Point2f& bl,
+                Size& resolution,
+                bool& no_gui,
+                int& repeat);
+
 
 int main(int argc, char** argv)
 {
-    if (argc < 3)
+    string lut_method, image_path;
+    Point2f tl, tr, br, bl;
+    Size resolution;
+    bool no_gui;
+    int repeat;
+
+    if (!parse_args(argc, argv, lut_method, image_path, tl, tr, br, bl, resolution, no_gui, repeat))
     {
-        printf("Method name and test image path must be specified!\n");
-        print_usage(argv[0]);
         return EXIT_FAILURE;
     }
 
-    Mat image = imread(argv[2]);
+    Mat image = imread(image_path);
     if (image.empty())
     {
         printf("Failed to load the image!\n");
@@ -48,13 +43,12 @@ int main(int argc, char** argv)
     }
     cvtColor(image, image, COLOR_BGR2BGRA);
     
-    Mat screen = Mat::zeros(DISPLAY_H, DISPLAY_W, CV_8UC4);
+    Mat screen = Mat::zeros(resolution.height, resolution.width, CV_8UC4);
     uint* screen_buffer = reinterpret_cast<uint*>(screen.data);
 
-    vector<Point2f> points = { Point2f(242, 172), Point2f(1655, 71), Point2f(1714, 955), Point2f(255, 921) };
+    vector<Point2f> points = { tl, tr, br, bl };
     Mat trans_mat = ins::get_transform_matrix(points);
     unique_ptr<ins::LUT> lut = nullptr;
-    string lut_method = argv[1];
     string generated_class_info = "LUT method : ";
     if (lut_method.compare("plain") == 0)
     {
@@ -80,14 +74,13 @@ int main(int argc, char** argv)
 #endif
     else
     {
-        printf("Unrecognizable method name!\n");
-        print_usage(argv[0]);
+        printf("Unrecognizable method name! : %s\n", lut_method.c_str());
         return EXIT_FAILURE;
     }
 
     printf("%s\n", generated_class_info.c_str());
 
-    for (int i = 0; i < 100; i++)
+    for (int i = 0; i < repeat; i++)
     {
         auto start = chrono::high_resolution_clock::now();
 
@@ -98,11 +91,116 @@ int main(int argc, char** argv)
         auto duration_us = chrono::duration_cast<chrono::microseconds>(end - start).count();
         printf("Operations took %lld ms, %lld us\n", duration_ms, duration_us);
 
-#ifndef __arm__
-        imshow("screen", screen);
-        if ((waitKey(1) & 0xFF) == 27) break;
-#endif
+        if (!no_gui)
+        {
+            imshow("screen", screen);
+            if ((waitKey(1) & 0xFF) == 27) break;
+        }
     }
 
     return EXIT_SUCCESS;
+}
+
+
+bool parse_args(int argc, char** argv, 
+                string& lut_method, string& image_path, 
+                Point2f& tl, Point2f& tr, Point2f& br, Point2f& bl,
+                Size& resolution,
+                bool& no_gui,
+                int& repeat)
+{
+    const string keys =
+        "{h help     |         | print this message and exit. }"
+        "{@method    |<none>   | the method to be run. }"
+        "{@image     |<none>   | image to be transformed. }"
+        "{@TL        |<none>   | desired coordinates of top-left corner. format: x,y }"
+        "{@TR        |<none>   | desired coordinates of top-right corner. format: x,y }"
+        "{@BR        |<none>   | desired coordinates of bottom-right corner. format: x,y }"
+        "{@BL        |<none>   | desired coordinates of bottom-left corner. format: x,y }"
+        "{resolution |1920x1080| the size of screen. format: WxH }"
+        "{no-gui     |         | }"
+        "{repeat     |100      | the number of times to run the method. }";
+
+    CommandLineParser parser(argc, argv, keys);
+    parser.about(
+        "Run a performance assessment of perspective transform using LUT.\n"
+        "\n"
+        "Following methods are currently available:\n"
+        "        plain           plain 1D LUT with for-loop\n"
+        "        parallel        multi-threaded for-loop; each thread applies LUT on their sub-region\n"
+#ifdef __arm__
+        "        plain-o1        plain 1D LUT with general purpose registers and LDM STM instructions\n"
+        "        parallel-o1     multi-threaded optimized for-loop; same optimization scheme as plain-o1\n"
+#endif
+    );
+
+    if (parser.has("help"))
+    {
+        parser.printMessage();
+        return false;
+    }
+
+    lut_method = parser.get<string>("@method");
+    image_path = parser.get<string>("@image");
+
+    regex coordinates_pattern(R"~((\d+),(\d+))~");
+    smatch matches;
+
+    string tmps = parser.get<string>("@TL");
+    if (regex_match(tmps, matches, coordinates_pattern))
+        tl = Point2f(stoi(matches[1].str()), stoi(matches[2].str()));
+    else
+    {
+        printf("Error: failed to parse @TL=%s\n", tmps.c_str());
+        return false;
+    }
+
+    tmps = parser.get<string>("@TR");
+    if (regex_match(tmps, matches, coordinates_pattern))
+        tr = Point2f(stoi(matches[1].str()), stoi(matches[2].str()));
+    else
+    {
+        printf("Error: failed to parse @TR=%s\n", tmps.c_str());
+        return false;
+    }
+
+    tmps = parser.get<string>("@BR");
+    if (regex_match(tmps, matches, coordinates_pattern))
+        br = Point2f(stoi(matches[1].str()), stoi(matches[2].str()));
+    else
+    {
+        printf("Error: failed to parse @BR=%s\n", tmps.c_str());
+        return false;
+    }
+
+    tmps = parser.get<string>("@BL");
+    if (regex_match(tmps, matches, coordinates_pattern))
+        bl = Point2f(stoi(matches[1].str()), stoi(matches[2].str()));
+    else
+    {
+        printf("Error: failed to parse @BL=%s\n", tmps.c_str());
+        return false;
+    }
+
+    regex resolution_pattern(R"~((\d+)[x|X](\d+))~");
+    tmps = parser.get<string>("resolution");
+    if (regex_match(tmps, matches, resolution_pattern))
+        resolution = Size(stoi(matches[1].str()), stoi(matches[2].str()));
+    else
+    {
+        printf("Error: failed to parse [resolution]=%s\n", tmps.c_str());
+        return false;
+    }
+
+    no_gui = parser.has("no-gui");
+
+    repeat = parser.get<int>("repeat");
+
+    if (!parser.check())
+    {
+        parser.printErrors();
+        return false;
+    }
+
+    return true;
 }

@@ -13,7 +13,7 @@
 ```C++
 constexpr auto DISPLAY_W = 1920;
 constexpr auto DISPLAY_H = 1080;
-int table_size = DISPLAY_W * DISPLAY_H;m
+int table_size = DISPLAY_W * DISPLAY_H;
 uint32_t* frame;    // DISPLAY_W x DISPLAY_H x 4 크기, 콘텐츠의 한 프레임
 int n_threads = cv::getNumThreads();    // 쓰레드 개수
 

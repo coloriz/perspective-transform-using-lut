@@ -121,19 +121,16 @@ cv::parallel_for_(cv::Range(0, table_size), [&](const cv::Range& range){
 uint32_t** lut = lookup_table.get();
 
 __asm__ volatile (
-    "mov     r0, #0\n"
+    "mov     r0, %[table_size]\n"
     ".loop:\n\t"
-    "cmp     r0, %[table_size]\n\t"
-    "bge     .exit\n\t"
     "ldmia   %[frame]!, {r1-r4}\n\t"
     "ldmia   %[lut]!, {r5-r8}\n\t"
     "str     r1, [r5]\n\t"
     "str     r2, [r6]\n\t"
     "str     r3, [r7]\n\t"
     "str     r4, [r8]\n\t"
-    "add     r0, #4\n\t"
-    "b       .loop\n"
-    ".exit:"
+    "subs    r0, #4\n\t"
+    "bgt     .loop\n\t"
     :
     : [lut] "r" (lut), [frame] "r" (frame), [table_size] "r" (table_size)
     : "cc", "memory", "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8"

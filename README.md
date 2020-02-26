@@ -176,7 +176,9 @@ parallel_for_(Range(0, table_size), [&](const Range& range){
 | Multi-threaded + LDM |      17ms      |
 
 ## Appendix
+
 ### 라즈베리파이 모델별 상세 스펙
+
 - Raspberry Pi 3 Model B+ (<https://www.raspberrypi.org/products/raspberry-pi-3-model-b-plus/>)
     - Broadcom BCM2837B0, Quad core Cortex-A53 (ARMv8) 64-bit SoC @ 1.4Ghz
     - 1GB LPDDR2 SDRAM
@@ -190,3 +192,25 @@ parallel_for_(Range(0, table_size), [&](const Range& range){
     - 2 x micro-HDMI ports (up to 4kp60 supported)
     - H.265 (4kp60 decode), H264 (1080p60 decode, 1080p30 encode)
     - OpenGL ES 3.0 Graphics
+
+### 일반 순차 메모리 복사 벤치마크
+
+#### Raspberry Pi 3 B+ - A32 ISA
+
+|         METHOD         | EXECUTION TIME |
+|:----------------------:|:--------------:|
+|         memcpy         |     7616 µs    |
+|      unrolled loop     |     8101 µs    |
+|     load/store pair    |     8123 µs    |
+| load/store pair (NEON) |     8195 µs    |
+
+#### Raspberry Pi 4 B - A64 ISA
+
+|         METHOD         | EXECUTION TIME |
+|:----------------------:|:--------------:|
+|         memcpy         |     4140 µs    |
+|      unrolled loop     |     4068 µs    |
+|     load/store pair    |     4152 µs    |
+| load/store pair (NEON) |     4091 µs    |
+
+### [Why you should run a 64 bit OS on your Raspberry Pi4](https://medium.com/@matteocroce/why-you-should-run-a-64-bit-os-on-your-raspberry-pi4-bd5290d48947)
